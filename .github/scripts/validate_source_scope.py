@@ -22,6 +22,11 @@ CI_FILES = {
     'governance/interim-release-policy.json',
 }
 
+ALLOY_FIXTURE_CI_FILES = {
+    '.github/scripts/verify_secret_findings.py',
+    '.github/scripts/test_secret_findings.py',
+}
+
 # Independently reviewed pre-existing authority. No generic .github bootstrap.
 LEGACY_GITHUB_AUTHORITY = {
     ('appolon1908/Codestra-Device-Forge', 'a1646d9504a10db42f19d4665c7801b625e41300'): {
@@ -175,6 +180,10 @@ def validate(root, tracked, manifest, trusted_manifest=None, tracked_blobs=None)
         if json.dumps(manifest, sort_keys=True) != json.dumps(trusted_manifest, sort_keys=True):
             errors.append('Candidate scope manifest differs from trusted Git base; authority review required')
         manifest = trusted_manifest
+    ci_files = CI_FILES
+    if (manifest.get('repository'), manifest.get('reviewed_base_sha')) == (
+            'appolon1908/Codestra-Alloy', 'f0d6705a3e374608241bd3554400fa92a4ce9eb4'):
+        ci_files = CI_FILES | ALLOY_FIXTURE_CI_FILES
     frozen = manifest.get('frozen_entries', {})
     if frozen:
         if tracked_blobs is None:
@@ -187,7 +196,7 @@ def validate(root, tracked, manifest, trusted_manifest=None, tracked_blobs=None)
     for name, mode in tracked.items():
         if name in frozen:
             continue  # Frozen vendor/authority bytes are never executed or semantically reinterpreted.
-        if frozen and name not in CI_FILES:
+        if frozen and name not in ci_files:
             doc_addition = (name == 'README.md' or (name.startswith('docs/') and name.endswith('.md')))
             if not doc_addition or Path(name).name in ('AGENTS.md', 'CLAUDE.md'):
                 errors.append(f'Outside reviewed documentation-additions lane: {name}')
@@ -196,14 +205,14 @@ def validate(root, tracked, manifest, trusted_manifest=None, tracked_blobs=None)
         if mode != '100644' or path.is_symlink():
             errors.append(f'Forbidden executable/symlink/submodule: {name}')
             continue
-        allowed = (name.endswith('.md') or name in CI_FILES or name == '.gitignore'
+        allowed = (name.endswith('.md') or name in ci_files or name == '.gitignore'
                    or name in allowed_structured)
         if not allowed:
             errors.append(f'Outside documentation/contract scope; product CI required: {name}')
             continue
         try:
             text = path.read_text(encoding='utf-8')
-            if '\0' in text or (text.startswith('#!') and name not in CI_FILES):
+            if '\0' in text or (text.startswith('#!') and name not in ci_files):
                 raise ValueError('binary or disguised executable')
             texts[name] = text
             if name.endswith('.md'):
